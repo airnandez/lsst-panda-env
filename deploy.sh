@@ -108,7 +108,7 @@ fi
 #
 if [[ -d '/cvmfs/tmp' ]]; then
     workDir='/cvmfs/tmp'
-    trap "sudo rm -f ${workDir}/*" EXIT
+    trap "sudo rm -rf ${workDir}/*" EXIT
 else
     workDir=$(mktemp --directory --tmpdir=${scratchDir} panda_env-deploy-XXXXXXX)
     if [[ $? != 0 ]]; then
