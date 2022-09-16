@@ -91,8 +91,7 @@ if [ ${debug} == false ]; then
 fi
 
 #
-# Download the panda-env installer for the specified release to our work
-# directory
+# Download to our work directory the panda-env installer for the specified release 
 #
 downloadDir="${workDir}/download"
 mkdir -p ${downloadDir}
@@ -106,7 +105,7 @@ fi
 
 #
 # Unpack the installer and run the installer. A directory named like
-# "panda-conf-0.0.2" will be created. That directory contains the installer
+# "panda-conf-x.x.x" will be created. That directory contains the installer
 # which is named "panda_env/panda_env_install.sh"
 #
 trace "unpacking the installer"
@@ -119,6 +118,7 @@ if [[ ! -f ${installer} ]]; then
     exit 1
 fi
 
+trace "runing the installer with install directory ${installDir}"
 bash ${installer} ${installDir}
 rc=$?
 if [[ ${rc} != 0 ]]; then
