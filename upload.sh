@@ -59,7 +59,6 @@ if [ ${os} == "darwin" ]; then
 else
     TMPDIR=$(mktemp --directory --tmpdir=${TMPDIR} ${USER}.upload.XXXXX)
 fi
-trace "TMPDIR=${TMPDIR}"
 trap "rm -rf ${TMPDIR}" EXIT
 
 #

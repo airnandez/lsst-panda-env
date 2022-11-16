@@ -13,7 +13,7 @@ if [[ -f ${scriptDir}/config.sh ]]; then
 fi
 productName=${defaultProductName}
 installTopDir="${defaultCvmfsRepo}/$(platform)/${productName}"
-isExperimental=true  # TODO: set to false
+isExperimental=false
 skipUpload=false
 debug=false
 scratchDir='/mnt/scratch'
