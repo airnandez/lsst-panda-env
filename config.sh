@@ -11,4 +11,4 @@ defaultCvmfsRepo='/cvmfs/sw.lsst.eu'
 defaultDeployDir="${defaultCvmfsRepo}/$(platform)/${defaultProductName}"
 
 # S3 bucket where the archives are persisted
-defaultBucket="cc:software"
+defaultBucket="rubin:software"
