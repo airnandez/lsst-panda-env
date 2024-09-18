@@ -6,9 +6,10 @@
 # Globals
 #
 defaultProductName='panda_env'
-
 defaultCvmfsRepo='/cvmfs/sw.lsst.eu'
-defaultDeployDir="${defaultCvmfsRepo}/$(platform)/${defaultProductName}"
+defaultDeployDir="${defaultCvmfsRepo}/$(osDistribArch)/${defaultProductName}"
 
+#
 # S3 bucket where the archives are persisted
+#
 defaultBucket="rubin:software"

@@ -12,7 +12,7 @@ if [[ -f ${scriptDir}/config.sh ]]; then
     source ${scriptDir}/config.sh
 fi
 productName=${defaultProductName}
-installTopDir="${defaultCvmfsRepo}/$(platform)/${productName}"
+installTopDir=${defaultDeployDir}
 isExperimental=false
 skipUpload=false
 debug=false
@@ -25,7 +25,7 @@ function usage() {
     echo -e "   ${scriptName} -v <version>  [-d <install top dir>] [-D] [-U] [-X]"
     echo -e "\nExamples:\n"
     echo -e "   ${scriptName} -v v0.0.2"
-    echo -e "   ${scriptName} -v v0.0.2 -d ${installTopDir}"    
+    echo -e "   ${scriptName} -v v0.0.2 -d ${installTopDir}"
     echo -e "\nOptions:\n"
     echo -e "   -D: run in debug mode (keep the resulting installation)"
     echo -e "   -U: don't upload the resulting archive file"
@@ -50,13 +50,13 @@ while getopts "hd:v:DUX" option; do
             ;;
         D)
             debug=true
-            ;;        
+            ;;
         U)
             skipUpload=true
-            ;;        
+            ;;
         X)
             isExperimental=true
-            ;;        
+            ;;
     esac
 done
 shift $((OPTIND-1))
@@ -70,11 +70,11 @@ if [[ -z ${pandaEnvVersion} ]]; then
 fi
 
 #
-# Build the Docker image with all the prerequisites to install panda_env
+# Build the Docker image with all the prerequisites to install 'panda_env'
 #
 trace "preparing Docker image"
 pandaEnvVersion=$(canonicalizeVersion ${pandaEnvVersion})
-imageName="rubin/panda_env:${pandaEnvVersion}"
+imageName="rubin/{productName}:${pandaEnvVersion}"
 DOCKER_SCAN_SUGGEST=false
 imageID=$(docker build --network host --quiet --tag ${imageName} .)
 rc=$?
@@ -84,7 +84,7 @@ if [[ $rc != 0 ]]; then
 fi
 
 #
-# Run the Docker image to execute the panda-env installer. Expose this
+# Run the Docker image to execute the 'panda-env' installer. Expose this
 # script's directory to the container under the mount point '/work'
 #
 workDir=$(mktemp --directory --tmpdir=${scratchDir} panda_env-install-XXXXXXX)
@@ -93,14 +93,13 @@ if [[ $? != 0 ]]; then
     exit 1
 fi
 
-# Don't remove work directory (for debugging purposes) when executing in
-# debug mode
-if [ ${debug} == false ]; then
+# Don't remove work directory when executing in debug mode
+if [[ ${debug} == false ]]; then
     trap "rm -rf ${workDir}" EXIT
 fi
 
-# 
-# Prepare install command line (file paths are in container name space)
+#
+# Prepare install command line (file paths are in container namespace)
 #
 installDir="${installTopDir}/${pandaEnvVersion}"
 [ ${isExperimental} == true ] && installDir="${installDir}-dev"
@@ -121,10 +120,10 @@ docker run \
     --rm \
     --privileged \
     --network host \
-    --volume $(pwd):/work \
+    --volume ${scriptDir}:/work \
     --volume ${scratchDir}:/scratch \
     --volume ${workDir}:${installDir} \
-    --env RCLONE_CREDENTIALS=$(base64Encode $HOME/.rclone.conf) \
+    --env RCLONE_CREDENTIALS=$(base64Encode ${HOME}/.rclone.conf) \
     ${imageName} \
     ${installCommand}
 

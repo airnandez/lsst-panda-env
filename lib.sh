@@ -24,20 +24,46 @@ function perror() {
 function canonicalizeVersion() {
     local version=$1
     # Strip 'v' prefix
-    version=$(echo ${version} | tr [:upper:] [:lower:] | sed -e 's/^[v]*//')
+    version=$(echo ${version} | tr '[:upper:]' '[:lower:]' | sed -e 's/^[v]*//')
     echo "v${version}"
 }
 
 # Returns the operating system, e.g. "linux", "darwin"
 function osName() {
-    echo $(uname -s | tr [:upper:] [:lower:])
+    echo $(uname -s | tr '[:upper:]' '[:lower:]')
 }
 
 # Returns an identifier for the running platform, e.g. "linux-x86_64"
 function platform() {
-    # Get the kernel architecture, e.g. "x86_64"
-    local arch=$(uname -m | tr [:upper:] [:lower:])
-    echo $(osName)-${arch}
+    echo $(osName)-$(architecture)
+}
+
+# Returns the architecture, e.g. "x86_64", "arm64", "aarch64"
+function architecture() {
+    echo $(uname -m | tr '[:upper:]' '[:lower:]')
+}
+
+# Returns the specific distribution of the operating system and the architecture
+# e.g. "almalinux-aarch64", "rhel-x86_64", "darwin-x86_64"
+function osDistribArch() {
+    local distrib
+    case $(osName) in
+        "darwin")
+            distrib="darwin"
+            ;;
+
+        "linux")
+            distrib="unknownlinux"
+            if [[ -f "/etc/os-release" ]]; then
+                # File '/etc/os-release' contains a line of the form 'ID="almalinux"'. Extract the Linux identifier.
+                distrib=$(cat /etc/os-release | awk -F '=' '$1=="ID" {print $2}' | sed 's/"//g' | tr '[:upper:]' '[:lower:]')
+            fi
+            ;;
+
+        *)
+            ;;
+    esac
+    echo "${distrib}-$(architecture)"
 }
 
 # Encodes the contents of a file in base 64
@@ -56,9 +82,9 @@ function base64Encode() {
 # given the cvmfs repository, the platform (i.e. 'linux-x86_64') and
 # the product name.
 #
-# Example: given the cvmfs repository '/cvmfs/sw.lsst.eu', the product 
+# Example: given the cvmfs repository '/cvmfs/sw.lsst.eu', the product
 # name 'panda_env' and the platform 'linux-x86_64', this function returns
-#    '/cvmfs/sw.lsst.eu/linux-x86_64/panda_dev'
+#    '/cvmfs/sw.lsst.eu/linux-x86_64/panda_env'
 function getProductDeployDir() (
     local cvmfsRepo=$1
     local platform=$2
@@ -101,7 +127,7 @@ function getArchiveNameForDir() {
 #
 # For instance, when this function is called with bucket 'bucket',
 # platform 'linux-x86_64', product 'panda_env' and archive name
-# 'cvmfs__sw.lsst.eu__linux-x86_64__panda_env__v0.0.2-dev.tar.gz' it 
+# 'cvmfs__sw.lsst.eu__linux-x86_64__panda_env__v0.0.2-dev.tar.gz' it
 # returns
 #   'bucket/linux-x86_64/panda_env/cvmfs__sw.lsst.eu__linux-x86_64__panda_env__v0.0.2-dev.tar.gz'
 function getArchiveLocation() {

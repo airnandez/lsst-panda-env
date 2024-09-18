@@ -48,10 +48,10 @@ while getopts "hd:p:v:DU" option; do
             ;;
         D)
             debug=true
-            ;;   
+            ;;
         U)
             skipUpload=true
-            ;;   
+            ;;
     esac
 done
 shift $((OPTIND-1))
@@ -91,10 +91,14 @@ if [ ${debug} == false ]; then
 fi
 
 #
-# Download to our work directory the panda-env installer for the specified release 
+# Download the panda-env installer for the specified release to our work
+# directory.
 #
 downloadDir="${workDir}/download"
-mkdir -p ${downloadDir}
+if ! mkdir -p ${downloadDir}; then
+    perror ${scriptName} "could not create directory ${downloadDir}"
+    exit 1
+fi
 archiveName="${version}.tar.gz"
 url="${gitRepoURL}/archive/refs/tags/${archiveName}"
 wget --quiet --directory-prefix ${downloadDir} ${url}
@@ -104,9 +108,9 @@ if [[ $? != 0 ]]; then
 fi
 
 #
-# Unpack the installer and run the installer. A directory named like
-# "panda-conf-x.x.x" will be created. That directory contains the installer
-# which is named "panda_env/panda_env_install.sh"
+# Unpack and run the installer. A directory named like "panda-conf-x.x.x" will
+# be created. That directory contains the installer which is named
+# "panda_env/panda_env_install.sh"
 #
 trace "unpacking the installer"
 tar --directory ${downloadDir} -zxf "${downloadDir}/${archiveName}"
@@ -114,7 +118,7 @@ tar --directory ${downloadDir} -zxf "${downloadDir}/${archiveName}"
 trace "installing ${productName} ${version} in directory ${installDir}"
 installer=$(readlink -f ${downloadDir}/panda-conf-*/panda_env/panda_env_install.sh)
 if [[ ! -f ${installer} ]]; then
-    perror ${scriptName} "could not find installer panda_env_install.sh"
+    perror ${scriptName} "could not find installer ${installer}"
     exit 1
 fi
 
@@ -130,7 +134,10 @@ fi
 # Create an archive file for this version relative to the top install directory
 #
 archiveDir="${workDir}/archive"
-mkdir -p ${archiveDir}
+if ! mkdir -p ${archiveDir}; then
+    perror ${scriptName} "could not create archive directory ${archiveDir}"
+    exit 1
+fi
 tarFileName=$(getArchiveNameForDir ${installDir})
 archiveFileName="${archiveDir}/${tarFileName}"
 
@@ -143,7 +150,10 @@ tar --hard-dereference \
 #
 # Upload the archive file to the persistent location
 #
-if [ ${skipUpload} == false ]; then
+if [[ ${skipUpload} == false ]]; then
+    # TODO: compute the destination. It is of the form
+    #    rubin:software/cvmfs/sw.lsst.eu/almalinux-x86_64/panda_env/v1.0.16.tar.gz
+
     ${scriptDir}/upload.sh ${productName} ${archiveFileName}
 fi
 
