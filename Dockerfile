@@ -8,7 +8,7 @@ RUN yum update --quiet --assumeyes
 #
 # Install prerequisites
 #
-RUN yum install --quiet --assumeyes wget curl unzip
+RUN yum install --quiet --assumeyes unzip wget
 
 #
 # Create unprivileged user

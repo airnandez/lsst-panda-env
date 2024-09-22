@@ -12,7 +12,7 @@ if [[ -f ${scriptDir}/config.sh ]]; then
     source ${scriptDir}/config.sh
 fi
 productName=${defaultProductName}
-installTopDir=${defaultDeployDir}
+installTopDir=${defaultInstallTopDir}
 isExperimental=false
 skipUpload=false
 debug=false
@@ -79,7 +79,7 @@ DOCKER_SCAN_SUGGEST=false
 imageID=$(docker build --network host --quiet --tag ${imageName} .)
 rc=$?
 if [[ $rc != 0 ]]; then
-    perror ${scriptName} "could not build Docker image"
+    perror "could not build Docker image"
     exit 1
 fi
 
@@ -89,7 +89,7 @@ fi
 #
 workDir=$(mktemp --directory --tmpdir=${scratchDir} panda_env-install-XXXXXXX)
 if [[ $? != 0 ]]; then
-    perror ${scriptName} "could not create temporary work directory"
+    perror "could not create temporary work directory"
     exit 1
 fi
 
@@ -101,13 +101,11 @@ fi
 #
 # Prepare install command line (file paths are in container namespace)
 #
-installDir="${installTopDir}/${pandaEnvVersion}"
-[ ${isExperimental} == true ] && installDir="${installDir}-dev"
-
 installCommand="/work/install-panda-env.sh"
-installFlags="-p ${productName} -v ${pandaEnvVersion} -d ${installDir}"
+installFlags="-p ${productName} -v ${pandaEnvVersion} -d ${installTopDir}"
 [ ${skipUpload} == true ] && installFlags+=" -U "
 [ ${debug} == true ] && installFlags+=" -D "
+[ ${isExperimental} == true ] && installFlags+=" -X "
 installCommand+=" ${installFlags}"
 
 #
@@ -122,13 +120,13 @@ docker run \
     --network host \
     --volume ${scriptDir}:/work \
     --volume ${scratchDir}:/scratch \
-    --volume ${workDir}:${installDir} \
+    --volume ${workDir}:${installTopDir} \
     --env RCLONE_CREDENTIALS=$(base64Encode ${HOME}/.rclone.conf) \
     ${imageName} \
     ${installCommand}
 
 if [[ $? != 0 ]]; then
-    perror ${scriptName} "could not install panda_env"
+    perror "could not install panda_env"
     exit 1
 fi
 

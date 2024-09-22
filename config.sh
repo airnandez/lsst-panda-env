@@ -7,7 +7,8 @@
 #
 defaultProductName='panda_env'
 defaultCvmfsRepo='/cvmfs/sw.lsst.eu'
-defaultDeployDir="${defaultCvmfsRepo}/$(osDistribArch)/${defaultProductName}"
+defaultInstallTopDir=${defaultCvmfsRepo}
+defaultExperimentalSuffix='dev'
 
 #
 # S3 bucket where the archives are persisted

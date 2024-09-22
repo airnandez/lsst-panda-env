@@ -14,6 +14,8 @@ fi
 gitRepoURL='https://github.com/lsst-dm/panda-conf'
 skipUpload=false
 debug=false
+isExperimental=false
+compress=true
 
 function usage() {
     local scriptName=$1
@@ -21,7 +23,7 @@ function usage() {
     echo -e "   ${scriptName} -h"
     echo -e "   ${scriptName} -p <product> -v <version> -d <install dir> [-D] [-U]"
     echo -e "\nExample:\n"
-    echo -e "   ${scriptName} -p panda_env -v v0.0.2 -d ${defaultDeployDir}/v0.0.2"
+    echo -e "   ${scriptName} -p panda_env -v v0.0.2 -d ${defaultInstallTopDir}"
     echo -e "\nOptions:\n"
     echo -e "   -D: run in debug mode, i.e. keep the result of the installation"
     echo -e "   -U: don't upload the resulting archive file"
@@ -31,14 +33,14 @@ function usage() {
 # Parse command line
 #
 OPTIND=1
-while getopts "hd:p:v:DU" option; do
+while getopts "hd:p:v:DUX" option; do
     case "${option}" in
         h|\?)
             usage ${scriptName}
             exit 0
             ;;
         d)
-            installDir=$OPTARG
+            installTopDir=$OPTARG
             ;;
         p)
             productName=$OPTARG
@@ -52,6 +54,9 @@ while getopts "hd:p:v:DU" option; do
         U)
             skipUpload=true
             ;;
+        X)
+            isExperimental=true
+            ;;
     esac
 done
 shift $((OPTIND-1))
@@ -59,19 +64,20 @@ shift $((OPTIND-1))
 #
 # Check command line options
 #
-if [[ -z ${productName} || -z ${version} || -z ${installDir} ]]; then
+if [[ -z ${productName} || -z ${version} || -z ${installTopDir} ]]; then
     usage ${scriptName}
     exit 1
 fi
-if [[ ! -d ${installDir} ]]; then
-    perror ${scriptName} "install directory ${installDir} does not exist"
+if [[ ! -d ${installTopDir} ]]; then
+    perror "install directory ${installTopDir} does not exist"
     exit 1
 fi
 version=$(canonicalizeVersion ${version})
 
 #
-# Install from git repository
+# Prepare install directory
 #
+installDir=$(getInstallDir ${installTopDir} $(osDistrib) $(architecture) ${productName} ${version} ${isExperimental})
 trace "installing ${productName} ${version} to ${installDir}"
 
 #
@@ -82,7 +88,7 @@ scratchDir=${TMPDIR:-/tmp}
 [[ -d /scratch ]] && scratchDir='/scratch'
 workDir=$(mktemp --directory --tmpdir=${scratchDir} "tmp-XXXXXXX")
 if [[ $? != 0 ]]; then
-    perror ${scriptName} "could not create temporary directory under ${scratchDir}"
+    perror "could not create temporary directory under ${scratchDir}"
     exit 1
 fi
 if [ ${debug} == false ]; then
@@ -96,14 +102,14 @@ fi
 #
 downloadDir="${workDir}/download"
 if ! mkdir -p ${downloadDir}; then
-    perror ${scriptName} "could not create directory ${downloadDir}"
+    perror "could not create directory ${downloadDir}"
     exit 1
 fi
-archiveName="${version}.tar.gz"
-url="${gitRepoURL}/archive/refs/tags/${archiveName}"
+remoteArchiveName="${version}.tar.gz"
+url="${gitRepoURL}/archive/refs/tags/${remoteArchiveName}"
 wget --quiet --directory-prefix ${downloadDir} ${url}
 if [[ $? != 0 ]]; then
-    perror ${scriptName} "could not download panda_env version ${version}"
+    perror "could not download panda_env version ${version}"
     exit 1
 fi
 
@@ -113,12 +119,12 @@ fi
 # "panda_env/panda_env_install.sh"
 #
 trace "unpacking the installer"
-tar --directory ${downloadDir} -zxf "${downloadDir}/${archiveName}"
+tar --directory ${downloadDir} -zxf "${downloadDir}/${remoteArchiveName}"
 
 trace "installing ${productName} ${version} in directory ${installDir}"
 installer=$(readlink -f ${downloadDir}/panda-conf-*/panda_env/panda_env_install.sh)
 if [[ ! -f ${installer} ]]; then
-    perror ${scriptName} "could not find installer ${installer}"
+    perror "could not find installer ${installer}"
     exit 1
 fi
 
@@ -126,21 +132,20 @@ trace "runing the installer with install directory ${installDir}"
 bash ${installer} ${installDir}
 rc=$?
 if [[ ${rc} != 0 ]]; then
-    perror ${scriptName} "execution of panda_env installer failed (rc=${rc})"
+    perror "execution of panda_env installer failed (rc=${rc})"
     exit 1
 fi
 
 #
-# Create an archive file for this version relative to the top install directory
+# Create an tar file for this version
 #
 archiveDir="${workDir}/archive"
 if ! mkdir -p ${archiveDir}; then
-    perror ${scriptName} "could not create archive directory ${archiveDir}"
+    perror "could not create archive directory ${archiveDir}"
     exit 1
 fi
-tarFileName=$(getArchiveNameForDir ${installDir})
+tarFileName=$(getTarFileName ${version} ${isExperimental} ${compress})
 archiveFileName="${archiveDir}/${tarFileName}"
-
 trace "writing tar file to ${archiveFileName}"
 tar --hard-dereference \
     --directory $(dirname ${installDir}) \
@@ -148,13 +153,13 @@ tar --hard-dereference \
     ./$(basename ${installDir})
 
 #
-# Upload the archive file to the persistent location
+# Upload the tar file to the archive
 #
 if [[ ${skipUpload} == false ]]; then
-    # TODO: compute the destination. It is of the form
-    #    rubin:software/cvmfs/sw.lsst.eu/almalinux-x86_64/panda_env/v1.0.16.tar.gz
-
-    ${scriptDir}/upload.sh ${productName} ${archiveFileName}
+    archiveLocation=$(getArchiveLocation ${defaultBucket} ${installDir} ${tarFileName})
+    ${scriptDir}/upload.sh ${archiveFileName} ${archiveLocation}
+else
+    trace "skipping upload of archive file ${archiveFileName}"
 fi
 
 #

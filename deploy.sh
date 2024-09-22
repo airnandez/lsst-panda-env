@@ -15,8 +15,11 @@ cvmfsRepo=${defaultCvmfsRepo}
 productName=${defaultProductName}
 forceDeployment=false
 isExperimental=false
+compress=true
 debug=false
 scratchDir='/mnt/scratch'
+arch="x86_64"
+distribution="almalinux"
 
 #
 # Functions
@@ -27,7 +30,7 @@ function usage() {
     echo -e "   ${scriptName} -h"
     echo -e "   ${scriptName} -v <version> [-p <product>] [-r <cvmfs repo>] [-F] [-X] [-D]"
     echo -e "\nExample:\n"
-    echo -e "   ${scriptName} -v 0.0.2  -p ${productName} -r ${cvmfsRepo}"
+    echo -e "   ${scriptName} -v v1.0.16  -p ${productName} -r ${cvmfsRepo}"
     echo -e "\nOptions:\n"
     echo -e "   -D: run in debug mode"
     echo -e "   -F: force deployment even if the specified version is already deployed"
@@ -38,11 +41,17 @@ function usage() {
 # Parse command line
 #
 OPTIND=1
-while getopts "hr:p:v:DFX" option; do
+while getopts "ha:r:p:v:DFXS:" option; do
     case "${option}" in
         h|\?)
             usage ${scriptName}
             exit 0
+            ;;
+        a)
+            arch=$OPTARG
+            ;;
+        S)
+            distribution=$(echo ${OPTARG} | tr '[:upper:]' '[:lower:]')
             ;;
         r)
             cvmfsRepo=$OPTARG
@@ -61,7 +70,7 @@ while getopts "hr:p:v:DFX" option; do
             ;;
         X)
             isExperimental=true
-            ;;        
+            ;;
     esac
 done
 shift $((OPTIND-1))
@@ -76,30 +85,52 @@ fi
 version=$(canonicalizeVersion ${version})
 
 #
+# Validate distribution
+#
+case ${distribution} in
+    "almalinux"|"darwin"|"linux")
+        ;;
+
+    *)
+        perror "unsupported distribution \"${distribution}\" (expecting \"almalinux\", \"darwin\" or \"linux\")"
+        exit 1
+        ;;
+esac
+
+#
+# Validate architecture
+#
+case ${arch} in
+    "aarch64"|"arm64"|"x86_64")
+        ;;
+    *)
+        perror "unsupported architecture \"${arch}\" (expecting \"aarch64\", \"arm64\" or \"x86_64\")"
+        exit 1
+        ;;
+esac
+
+#
 # Ensure the target cvmfs repository exists
 #
 if [ ! -d ${cvmfsRepo} ]; then
     echo "${scriptName}: could not find directory ${cvmfsRepo}"
     exit 1
 fi
-cvmfsRepo=$(readlink -f ${cvmfsRepo})
 
 #
 # Ensure this release is not yet published, unless force is true
 #
-productDeployDir=$(getProductDeployDir ${cvmfsRepo} $(platform) ${productName})
-productVersionDeployDir=$(getProductVersionDeployDir ${productDeployDir} ${version} ${isExperimental})
-if [[ -e ${productVersionDeployDir} && ${forceDeployment} == false ]]; then
-    echo "${scriptName}: ${productVersionDeployDir} already exists. Aborting deployment."
+deployDir=$(getInstallDir ${cvmfsRepo} ${distribution} ${arch} ${productName} ${version} ${isExperimental})
+if [[ -e ${deployDir} && ${forceDeployment} == false ]]; then
+    perror "${deployDir} already exists. Aborting deployment."
     exit 1
 fi
 
 #
 # Prepare the target deploy directory for this release
 #
-mkdir -p ${productDeployDir}
-if [[ $? -ne 0 ]]; then
-    echo "${scriptName}: could not create target deploy directory ${productDeployDir}"
+if ! mkdir -p ${deployDir}; then
+    perror "could not create target deploy directory ${deployDir}"
     exit 1
 fi
 
@@ -112,38 +143,40 @@ if [[ -d '/cvmfs/tmp' ]]; then
 else
     workDir=$(mktemp --directory --tmpdir=${scratchDir} panda_env-deploy-XXXXXXX)
     if [[ $? != 0 ]]; then
-        perror ${scriptName} "could not create temporary work directory"
+        perror "could not create temporary work directory"
         exit 1
     fi
+
     # Remove work directory when not in debug mode
     [ ${debug} == false ] && trap "rm -rf ${workDir}" EXIT
 fi
-downloadDir=${workDir}/download
-mkdir -p ${downloadDir}
+downloadDir="${workDir}/download/${productName}"
+if ! mkdir -p ${downloadDir}; then
+    perror "could not create download directory ${downloadDir}"
+    exit 1
+fi
 
 #
-# Download the archive file from its location in the persistent store to
-# the download directory
+# Download the archive file from its location in the archive to the download
+# directory
 #
-canonicalProductDeployDir=$(getProductDeployDir ${defaultCvmfsRepo} $(platform) ${productName})
-canonicalProductVersionDeployDir=$(getProductVersionDeployDir ${canonicalProductDeployDir} ${version} ${isExperimental})
-archiveName=$(getArchiveNameForDir ${canonicalProductVersionDeployDir})
-archiveLocation=$(getArchiveLocation ${defaultBucket} $(platform) ${productName} ${archiveName})
-
-cmd="rclone copy ${archiveLocation} ${downloadDir}"
+tarFileName=$(getTarFileName ${version} ${isExperimental} ${compress})
+archiveLocation=$(getArchiveLocation ${defaultBucket} ${deployDir} ${tarFileName})
+downloadTarFile="${downloadDir}/${tarFileName}"
+cmd="rclone copyto ${archiveLocation} ${downloadTarFile}"
 trace ${cmd}; ${cmd}
-if [[ ! -f ${downloadDir}/${archiveName} ]]; then
-    perror ${scriptName} "could not download the archive from the store"
+if [[ ! -f ${downloadTarFile} ]]; then
+    perror "could not download the archive from the store"
     exit 1
 fi
 
 #
 # Extract the archive contents into download directory.
 #
-cmd="tar --directory ${downloadDir} -zxf ${downloadDir}/${archiveName}"
+cmd="tar --directory ${downloadDir} -zxf ${downloadTarFile}"
 trace ${cmd}; ${cmd}
 if [[ $? != 0 ]]; then
-    perror "${scriptName}: could not extract contents from archive file ${downloadDir}/${archiveName}"
+    perror "${scriptName}: could not extract contents from archive file ${downloadTarFile}"
     exit 1
 fi
 
@@ -160,22 +193,22 @@ cvmfsRepoName=$(basename ${defaultCvmfsRepo})
 cmd="${cvmfsServerCmd} transaction ${cvmfsRepoName}"
 trace ${cmd}; ${cmd}
 if [[ $? != 0 ]]; then
-	perror ${scriptName} "could not start cvmfs_server transaction"
+	perror "could not start cvmfs_server transaction"
 	exit 1
 fi
 
 #
 # Copy the extracted product directory to its final deployment path
 #
-extractedFilePath=${downloadDir}/$(basename ${productVersionDeployDir})
-cmd="sudo cp --preserve --remove-destination --recursive ${extractedFilePath} ${productDeployDir}"
+extractedFilePath="${downloadDir}/$(basename ${deployDir})"
+cmd="sudo cp --preserve --remove-destination --recursive ${extractedFilePath} $(dirname ${deployDir})"
 trace ${cmd}; ${cmd}
 
 #
 # Add the '.cvmfscatalog' file to the deployment directory, if needed
 #
-if [[ ! -e ${productVersionDeployDir}/.cvmfscatalog ]]; then
-    cvmfscatalogFile="${productVersionDeployDir}/.cvmfscatalog"
+if [[ ! -e "${deployDir}/.cvmfscatalog" ]]; then
+    cvmfscatalogFile="${deployDir}/.cvmfscatalog"
     cmd="touch ${cvmfscatalogFile}"
     trace ${cmd}; ${cmd}
     cmd="chmod u=rw,g=r,o=r ${cvmfscatalogFile}"
@@ -187,10 +220,10 @@ fi
 #
 owner="lsstsw"
 if getent passwd ${owner} > /dev/null 2>&1; then
-    cmd="sudo chown ${owner}:${owner} ${productVersionDeployDir}"
+    cmd="sudo chown ${owner}:${owner} ${deployDir}"
     trace ${cmd}; ${cmd}
 fi
-cmd="sudo chmod u=rwx,g=rx,o=rx ${productVersionDeployDir}"
+cmd="sudo chmod u=rwx,g=rx,o=rx ${deployDir}"
 trace ${cmd}; ${cmd}
 
 #
@@ -199,10 +232,11 @@ trace ${cmd}; ${cmd}
 cmd="${cvmfsServerCmd} publish ${cvmfsRepoName}"
 trace ${cmd}; ${cmd}
 if [[ $? != 0 ]]; then
-	echo "${scriptName}: could not commit cvmfs transaction. Aborting"
+	trace "could not commit cvmfs transaction. Aborting"
 	cmd="${cvmfsServerCmd} abort -f ${cvmfsRepoName}"
 	trace ${cmd}; ${cmd}
+    trace "deployment of ${productName} ${version} under ${deployDir} failed"
 	exit 1
 fi
 
-trace "deployment of ${productName} ${version} under ${productVersionDeployDir} finished successfully"
+trace "${productName} ${version} successfully deployed under ${deployDir}"

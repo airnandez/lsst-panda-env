@@ -18,21 +18,21 @@ fi
 function usage() {
     local scriptName=$1
     echo -e "Usage:\n"
-    echo -e "   ${scriptName} <product> <archive file>"
-    echo -e "   \ne.g. ${scriptName} panda_env /path/to/file.tar.gz"
+    echo -e "   ${scriptName} <tar file> <remote location> "
+    echo -e "   \ne.g. ${scriptName} /path/to/file.tar.gz rubin:software/cvmfs/sw.lsst.eu/almalinux-x86_64/panda_env/v1.0.16.tar.gz"
 }
 
 #
 # Parse command line
 #
-productName=$1
-tarFilePath=$2
-if [[ -z ${productName} || -z ${tarFilePath} ]]; then
+localTarFile=$1
+remoteLocation=$2
+if [[ -z ${localTarFile} || -z ${remoteLocation} ]]; then
     usage ${scriptName}
     exit 1
 fi
-if [[ ! -f ${tarFilePath} ]]; then
-    perror ${scriptName} "could not find tar file ${tarFilePath}"
+if [[ ! -f ${localTarFile} ]]; then
+    perror "could not find tar file ${localTarFile}"
     exit 1
 fi
 
@@ -41,11 +41,11 @@ fi
 # $HOME/.rclone.conf file
 #
 if [ -z "${RCLONE_CREDENTIALS}" ] && [ ! -f "$HOME/.rclone.conf" ]; then
-    perror ${scriptName} "environment variable RCLONE_CREDENTIALS not set or empty and $HOME/.rclone.conf not found"
+    perror "environment variable RCLONE_CREDENTIALS not set or empty and $HOME/.rclone.conf not found"
     exit 1
 fi
 
-trace "${scriptName}: uploading ${productName} tar file at ${tarFilePath}"
+trace "uploading ${localTarFile} to ${remoteLocation}"
 
 #
 # Prepare temporary directory for downloading rclone package
@@ -64,15 +64,43 @@ trap "rm -rf ${TMPDIR}" EXIT
 #
 # Download rclone executable
 #
-rcloneUrl="https://downloads.rclone.org/rclone-current-linux-amd64.zip"
-if [ $(osName) == "darwin" ]; then
-    rcloneUrl="https://downloads.rclone.org/rclone-current-osx-amd64.zip"
+if [ ${os} == "linux" ]; then
+    case $(architecture) in
+        "x86_64")
+            rcloneUrl="https://downloads.rclone.org/rclone-current-linux-amd64.zip"
+            ;;
+
+        "aarch64")
+            rcloneUrl="https://downloads.rclone.org/rclone-current-linux-arm64.zip"
+            ;;
+
+        *)
+            perror "could not determine what rclone release to download for this host architecture"
+            exit 1
+            ;;
+    esac
+elif [ ${os} == "darwin" ]; then
+    case $(architecture) in
+        "x86_64")
+            rcloneUrl="https://downloads.rclone.org/rclone-current-osx-amd64.zip"
+            ;;
+
+        "arm64")
+            rcloneUrl="https://downloads.rclone.org/rclone-current-osx-arm64.zip"
+            ;;
+
+        *)
+            perror "could not determine what rclone release to download for this host architecture"
+            exit 1
+            ;;
+    esac
 fi
-rcloneZipFile=${TMPDIR}/$(basename ${rcloneUrl})
+
+rcloneZipFile=${TMPDIR}/rclone-current.zip
 rm -f ${rcloneZipFile}
 curl -s -L -o ${rcloneZipFile} ${rcloneUrl}
 if [ $? -ne 0 ]; then
-    perror ${scriptName} "error downloading rclone"
+    perror "error downloading rclone"
     exit 1
 fi
 
@@ -84,7 +112,7 @@ rm -rf ${unzipDir}
 unzip -qq -d ${unzipDir} ${rcloneZipFile}
 rcloneExe=$(find ${unzipDir} -name rclone -type f -print)
 if [[ ! -f ${rcloneExe} ]]; then
-    perror ${scriptName} "could not find rclone executable under ${unzipDir}"
+    perror "could not find rclone executable under ${unzipDir}"
     exit 1
 fi
 chmod u+x ${rcloneExe}
@@ -104,16 +132,14 @@ fi
 #
 # Upload the archive file to its location in the persistent store
 #
-storeLocation=$(getArchiveLocation ${defaultBucket} $(platform) ${productName} ${tarFilePath})
-trace "${scriptName}: uploading archive file ${tarFilePath} to ${storeLocation}"
-cmd="${rcloneExe} -I --config ${rcloneConfFile} copyto ${tarFilePath} ${storeLocation}"
+cmd="${rcloneExe} -I --config ${rcloneConfFile} copyto ${localTarFile} ${remoteLocation}"
 trace ${cmd}
 ${cmd}
 rc=$?
 if [ ${rc} -ne 0 ]; then
-    trace "${scriptName}: ERROR upload failed"
-    exit ${rc}
+    trace "ERROR upload of ${localTarFile} to ${remoteLocation} failed"
+else
+    trace "upload of ${localTarFile} to ${remoteLocation} succeeded"
 fi
 
-trace "${scriptName}: upload succeeded"
-exit 0
+exit ${rc}
