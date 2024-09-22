@@ -74,7 +74,7 @@ fi
 #
 trace "preparing Docker image"
 pandaEnvVersion=$(canonicalizeVersion ${pandaEnvVersion})
-imageName="rubin/{productName}:${pandaEnvVersion}"
+imageName="rubin/${productName}:${pandaEnvVersion}"
 DOCKER_SCAN_SUGGEST=false
 imageID=$(docker build --network host --quiet --tag ${imageName} .)
 rc=$?
