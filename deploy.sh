@@ -127,14 +127,6 @@ if [[ -e ${deployDir} && ${forceDeployment} == false ]]; then
 fi
 
 #
-# Prepare the target deploy directory for this release
-#
-if ! sudo mkdir -p ${deployDir}; then
-    perror "could not create target deploy directory ${deployDir}"
-    exit 1
-fi
-
-#
 # Prepare a directory for downloading the archive file
 #
 if [[ -d '/cvmfs/tmp' ]]; then
@@ -195,6 +187,14 @@ trace ${cmd}; ${cmd}
 if [[ $? != 0 ]]; then
 	perror "could not start cvmfs_server transaction"
 	exit 1
+fi
+
+#
+# Prepare the target deploy directory for this release
+#
+if ! sudo mkdir -p ${deployDir}; then
+    perror "could not create target deploy directory ${deployDir}"
+    exit 1
 fi
 
 #
