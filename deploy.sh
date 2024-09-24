@@ -129,7 +129,7 @@ fi
 #
 # Prepare the target deploy directory for this release
 #
-if ! mkdir -p ${deployDir}; then
+if ! sudo mkdir -p ${deployDir}; then
     perror "could not create target deploy directory ${deployDir}"
     exit 1
 fi
