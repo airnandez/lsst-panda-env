@@ -1,4 +1,4 @@
-FROM almalinux:9.4
+FROM almalinux:9.8
 
 #
 # Update the operating system
